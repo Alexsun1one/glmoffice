@@ -1,12 +1,81 @@
-# GenOffice
+# GLM Office
 
-**The world's first full-featured open-source AI Office suite.**
+**AI-native office suite with multi-provider support — bring your own key.**
 
-[![License: Apache-2.0](https://img.shields.io/github/license/genspark-ai/genoffice)](LICENSE)
-[![Latest release](https://img.shields.io/github/v/release/genspark-ai/genoffice)](https://github.com/genspark-ai/genoffice/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/genspark-ai/genoffice/total)](https://github.com/genspark-ai/genoffice/releases)
-[![GitHub stars](https://img.shields.io/github/stars/genspark-ai/genoffice?style=flat)](https://github.com/genspark-ai/genoffice/stargazers)
+[![License: Apache-2.0](https://img.shields.io/github/license/Alexsun1one/glmoffice)](LICENSE)
 ![Platforms: macOS | Windows | Linux](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)
+![Fork of GenOffice](https://img.shields.io/badge/fork%20of-GenOffice%20(Apache--2.0)-blue)
+
+> **This is a community fork of [GenOffice](https://github.com/genspark-ai/genoffice) (Apache-2.0).**
+> It replaces the Genspark-only AI backend with a provider-agnostic architecture —
+> you bring your own API key and pick any provider. **No vendor lock-in, no account required.**
+
+## What's different from upstream GenOffice
+
+The original GenOffice locks all AI features behind a Genspark account login.
+This fork removes that lock and lets you use **any** OpenAI-compatible provider:
+
+| Feature | Upstream GenOffice | This fork |
+|---|---|---|
+| LLM (writing/editing) | Genspark proxy only | **Any provider** (GLM, GPT, Claude, Gemini, Kimi, Qwen, DeepSeek, Ollama…) |
+| Image generation | Genspark CLI | **Routed per provider** (CogView / DALL-E 3 / Imagen) |
+| Image analysis | Genspark CLI | **Routed per provider** (GLM-4V / GPT-4o / Claude / Gemini) |
+| Web search | Genspark CLI | **Zhipu server-side search** (zero extra key) |
+| Account required | Yes (Genspark login) | **No — just an API key** |
+
+## Quick start: configure your AI provider
+
+1. Launch the app → open **Settings** (gear icon in the account menu)
+2. Go to the **AI** section
+3. Under **Provider**, select **Custom**
+4. Under **Quick Preset**, pick your provider — this auto-fills the base URL and recommended model:
+
+   | Preset | Base URL | Default model |
+   |---|---|---|
+   | 智谱 GLM (Zhipu) | `open.bigmodel.cn/api/coding/paas/v4` | `glm-5.2` |
+   | DeepSeek | `api.deepseek.com/v1` | `deepseek-chat` |
+   | Kimi (月之暗面) | `api.moonshot.cn/v1` | `moonshot-v1-128k` |
+   | 通义千问 (Qwen) | `dashscope.aliyun.com/...` | `qwen-max` |
+   | SiliconFlow (硅基流动) | `api.siliconflow.cn/v1` | `Qwen2.5-72B` |
+   | Baichuan (百川) | `api.baichuan-ai.com/v1` | `Baichuan4-Turbo` |
+   | MiniMax | `api.minimax.chat/v1` | `abab6.5s-chat` |
+   | Ollama (本地) | `localhost:11434/v1` | `llama3.1` |
+
+5. Paste your **API key**
+6. Click **Test Connection** to verify (no tokens consumed)
+7. Done — start using AI in any document
+
+### Not locked to any model
+
+The model field is free-text. You can type any model name your provider supports
+(e.g. `glm-4.6`, `gpt-4o`, `claude-sonnet-5`, `deepseek-reasoner`). The preset
+just saves you from typing the base URL — it doesn't restrict you.
+
+### Built-in providers (no preset needed)
+
+You can also pick a **named provider** instead of Custom — the app knows the
+endpoint for OpenAI, Anthropic, Gemini, and DeepSeek directly. Custom is for
+any other OpenAI-compatible service.
+
+## Capabilities per provider
+
+| Provider | Chat / Write | Image gen | Image analysis | Web search |
+|---|---|---|---|---|
+| **Zhipu (Custom preset)** | ✅ GLM-5.2 | ✅ CogView-4 | ✅ GLM-4V | ✅ server-side |
+| **OpenAI** | ✅ GPT-4o | ✅ DALL-E 3 | ✅ GPT-4o | ❌ |
+| **Anthropic** | ✅ Claude | ❌ (no image API) | ✅ Claude | ❌ |
+| **Gemini** | ✅ Gemini | ✅ Imagen | ✅ Gemini | ❌ |
+| **DeepSeek** | ✅ DeepSeek | ❌ | ❌ | ❌ |
+| **Kimi / Qwen / others** | ✅ (via Custom) | ❌ | ❌ | ❌ |
+| **Ollama (local)** | ✅ | ❌ | ❌ | ❌ |
+
+---
+
+*Below is the original GenOffice README, preserved for reference.*
+
+---
+
+
 
 GenOffice is a free, open-source alternative to Microsoft Office for macOS,
 Windows, and Linux, built around AI editing as a first-class workflow rather
