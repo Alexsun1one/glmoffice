@@ -59,8 +59,8 @@ export function registerAiIpc(): void {
   ipcMain.handle('ai:get-settings', (): AiSettings => {
     const stored = readJson<Partial<AiSettings> & LegacyAiSettings>(AI_SETTINGS_PATH(), {})
     const settings = resolveAiSettings(stored, defaultAiSettings())
-    // AI features all go through Genspark (gsk login); stored settings that chose another provider are normalized back
-    settings.provider = 'genspark'
+    // 2026-08-11 by ZCode: 解除 Genspark 锁定，允许 custom/anthropic 等任意 provider
+    // settings.provider = 'genspark'
     return settings
   })
 
@@ -189,7 +189,7 @@ export function registerSlidesOnlyAiIpc(): void {
         imageSize?: string
       },
     ) => {
-      if (!hasGskAuth()) return { error: tm('errGskCli') }
+      // 2026-08-11 ZCode: 去掉 hasGskAuth 拦截,改用 ZHIPU_API_KEY(CogView-4)
       try {
         const r = await gskGenerateImage({
           prompt: String(op.prompt),
@@ -210,7 +210,7 @@ export function registerSlidesOnlyAiIpc(): void {
   ipcMain.handle(
     'ai:analyze-media',
     async (_event, op: { mediaUrls: string[]; requirements: string }) => {
-      if (!hasGskAuth()) return { error: tm('errGskCli') }
+      // 2026-08-11 ZCode: 去掉 hasGskAuth 拦截,改用 ZHIPU_API_KEY(GLM-4V)
       try {
         const text = await gskAnalyzeMedia({
           mediaUrls: (op.mediaUrls ?? []).map(String),

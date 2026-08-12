@@ -571,10 +571,7 @@ function registerPdfIpc(): void {
   ipcMain.handle(
     PDF_CHANNELS.generateImage,
     async (_e, op: { prompt?: unknown; aspectRatio?: unknown }) => {
-      if (!hasGskAuth())
-        return {
-          error: 'Genspark account is not logged in on this machine; ask the user to log in first',
-        }
+      // 2026-08-11 ZCode: 去掉 hasGskAuth 拦截,改用 ZHIPU_API_KEY(CogView-4)
       const prompt = String(op?.prompt ?? '').trim()
       if (!prompt) return { error: 'prompt must not be empty' }
       try {

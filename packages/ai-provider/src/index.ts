@@ -12,10 +12,12 @@ export type {
 } from './types'
 export {
   AI_PROVIDERS,
+  CUSTOM_PRESETS,
   GENSPARK_LLM_BASE_URLS,
   defaultAiSettings,
   resolveAiSettings,
 } from './providers'
+export type { CustomPreset } from './providers'
 export { chatForProvider } from './chat'
 export { AiCreditsError, sseLines, streamForProvider } from './stream'
 export type { StreamCallbacks } from './stream'

@@ -1,4 +1,6 @@
 import type { UpdateChannel } from './update-api'
+// 2026-08-11 ZCode: AI 设置类型,用于 Settings 的 AI 栏(provider/key/baseUrl/model)
+export type { AiSettings, AiProviderId, AiProviderConfig } from '@genoffice/ai-provider'
 
 /** UI language; kept self-contained here (mirrors Lang in @genoffice/i18n) */
 export type UiLanguage =
@@ -118,6 +120,12 @@ export interface HomeApi {
   getTheme(): Promise<UiTheme>
   /** switch + persist the UI theme; broadcasts 'app:theme-changed' to all web contents */
   setTheme(theme: UiTheme): Promise<void>
+  /** AI provider settings (provider/apiKey/baseUrl/model), persisted in userData/ai-settings.json */
+  getAiSettings(): Promise<import('@genoffice/ai-provider').AiSettings>
+  /** persist AI provider settings; also injects ZHIPU_API_KEY env for image/vision tools */
+  setAiSettings(settings: import('@genoffice/ai-provider').AiSettings): Promise<void>
+  /** 测试 provider 连接(轻量 /models 请求,不消耗 token)。返回 {ok, detail} */
+  testAiConnection(settings: import('@genoffice/ai-provider').AiSettings): Promise<{ ok: boolean; detail: string }>
   /** effective default save folder for new/untitled files (configured in userData/app-settings.json, falls back to <Documents>/GenOffice) */
   getDefaultSaveDir(): Promise<string>
   /** directory picker to change the default save folder; resolves to the new folder, or null when canceled or the pick was unusable */
@@ -254,6 +262,10 @@ export const HOME_CHANNELS = {
   setOnboardingSeen: 'home:set-onboarding-seen',
   getTheme: 'home:get-theme',
   setTheme: 'home:set-theme',
+  // 2026-08-11 ZCode: 复用 docs-main.registerAiIpc 已注册的 'ai:get-settings'/'ai:set-settings' channel
+  getAiSettings: 'ai:get-settings',
+  setAiSettings: 'ai:set-settings',
+  testAiConnection: 'ai:test-connection',
   getDefaultSaveDir: 'home:get-default-save-dir',
   pickDefaultSaveDir: 'home:pick-default-save-dir',
   openGenTeam: 'home:open-genteam',

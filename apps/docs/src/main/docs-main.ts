@@ -2482,11 +2482,33 @@ const activeAiStreams = new Map<string, AbortController>()
  * sheets' standalone AI handlers use the same channel names.
  */
 export function registerAiIpc(): void {
+  // 2026-08-11 ZCode: 启动时读 ai-settings,注入当前 provider 的通用 env,
+  // 供 gskGenerateImage / gskAnalyzeMedia 按 provider 路由(智谱CogView/GLM-4V、
+  // OpenAI DALL-E/GPT-4o、Anthropic Claude、Gemini Imagen/Gemini)
+  try {
+    const stored = readJson<Partial<AiSettings> & LegacyAiSettings>(SETTINGS_PATH(), {})
+    const settings = resolveAiSettings(stored, defaultAiSettings())
+    const cfg = settings.providers[settings.provider]
+    if (cfg?.apiKey) {
+      process.env.AI_ACTIVE_PROVIDER = settings.provider
+      process.env.AI_ACTIVE_KEY = cfg.apiKey
+      if (cfg.baseUrl) process.env.AI_ACTIVE_BASE_URL = cfg.baseUrl
+      if (cfg.model) process.env.AI_ACTIVE_MODEL = cfg.model
+      // 向后兼容:智谱 custom 时也设 ZHIPU_API_KEY(旧代码可能引用)
+      if (settings.provider === 'custom') {
+        process.env.ZHIPU_API_KEY = cfg.apiKey
+        if (cfg.baseUrl) process.env.ZHIPU_BASE_URL = cfg.baseUrl
+      }
+    }
+  } catch {
+    /* settings 还没创建,忽略 */
+  }
+
   ipcMain.handle('ai:get-settings', (): AiSettings => {
     const stored = readJson<Partial<AiSettings> & LegacyAiSettings>(SETTINGS_PATH(), {})
     const settings = resolveAiSettings(stored, defaultAiSettings())
-    // AI features all go through Genspark (gsk login); legacy settings with another provider are reset
-    settings.provider = 'genspark'
+    // 2026-08-11 by ZCode: 解除 Genspark 锁定，允许 custom/anthropic 等任意 provider
+    // settings.provider = 'genspark'
     return settings
   })
 
@@ -2507,6 +2529,50 @@ export function registerAiIpc(): void {
 
   ipcMain.handle('ai:set-settings', (_event, settings: AiSettings) => {
     writeJson(SETTINGS_PATH(), settings)
+  })
+
+  // 2026-08-11 ZCode: 连接测试 —— 轻量 fetch /models,不消耗 token
+  ipcMain.handle('ai:test-connection', async (_event, settings: AiSettings) => {
+    const provider = settings.provider
+    const config = settings.providers[provider]
+    if (!config?.apiKey) return { ok: false, detail: 'No API key set' }
+    // 按 provider 选测试端点(都走 OpenAI 兼容 /models,只查不花钱)
+    const TEST_URLS: Record<string, string> = {
+      openai: 'https://api.openai.com/v1/models',
+      anthropic: 'https://api.anthropic.com/v1/models',
+      gemini: 'https://generativelanguage.googleapis.com/v1beta/models',
+      deepseek: 'https://api.deepseek.com/v1/models',
+    }
+    const baseUrl = provider === 'custom'
+      ? (config.baseUrl ?? 'https://open.bigmodel.cn/api/coding/paas/v4').replace(/\/$/, '')
+      : TEST_URLS[provider] ?? ''
+    if (!baseUrl) return { ok: false, detail: `No test endpoint for provider: ${provider}` }
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      // Anthropic 用 x-api-key + version 头;Gemini 用 ?key=;其他用 Bearer
+      let url = baseUrl
+      if (provider === 'anthropic') {
+        headers['x-api-key'] = config.apiKey
+        headers['anthropic-version'] = '2023-06-01'
+      } else if (provider === 'gemini') {
+        url = `${baseUrl}?key=${config.apiKey}`
+      } else {
+        headers.Authorization = `Bearer ${config.apiKey}`
+      }
+      const resp = await fetch(url, { method: 'GET', headers, signal: AbortSignal.timeout(10000) })
+      if (resp.ok) {
+        const data = await resp.json().catch(() => ({}))
+        const count = Array.isArray((data as { data?: unknown[] }).data)
+          ? (data as { data: unknown[] }).data.length
+          : Array.isArray((data as { models?: unknown[] }).models)
+            ? (data as { models: unknown[] }).models.length
+            : '?'
+        return { ok: true, detail: `Connected (${count} models available)` }
+      }
+      return { ok: false, detail: `HTTP ${resp.status}: ${(await resp.text().catch(() => '')).slice(0, 120)}` }
+    } catch (err) {
+      return { ok: false, detail: err instanceof Error ? err.message : String(err) }
+    }
   })
 
   ipcMain.handle('ai:stream', async (event, request: AiStreamRequest) => {

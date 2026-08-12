@@ -3,6 +3,8 @@ import type { ReactNode } from 'react'
 import { useI18n } from './locale'
 import type { StringKey } from './locale'
 import type { AccountStatus, UiTheme } from '../../shared/home-api'
+import type { AiSettings, AiProviderId } from '@genoffice/ai-provider'
+import { AI_PROVIDERS, CUSTOM_PRESETS, defaultAiSettings } from '@genoffice/ai-provider'
 import './settings.css'
 
 // ── Settings modal (opened from the account menu) ─────────
@@ -44,11 +46,12 @@ const CHANNEL_OPTIONS = [
   { value: 'beta', labelKey: 'channelBeta' },
 ] as const satisfies readonly { value: 'stable' | 'beta'; labelKey: StringKey }[]
 
-type SectionId = 'account' | 'general' | 'about'
+type SectionId = 'account' | 'general' | 'ai' | 'about'
 
 const SECTIONS: readonly { id: SectionId; labelKey: StringKey }[] = [
   { id: 'account', labelKey: 'setSecAccount' },
   { id: 'general', labelKey: 'setSecGeneral' },
+  { id: 'ai', labelKey: 'setSecAi' },
   { id: 'about', labelKey: 'setSecAbout' },
 ]
 
@@ -77,6 +80,21 @@ function SectionIcon({ id }: { id: SectionId }) {
         />
         <circle cx="11.5" cy="5" r="1.7" stroke="currentColor" strokeWidth="1.3" />
         <circle cx="4.5" cy="11" r="1.7" stroke="currentColor" strokeWidth="1.3" />
+      </svg>
+    )
+  }
+  // 2026-08-11 ZCode: AI 栏图标(四芒星/火花样式)
+  if (id === 'ai') {
+    return (
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path
+          d="M8 1.5l1.6 4.2 4.2 1.6-4.2 1.6L8 13.1l-1.6-4.2L2.2 7.3l4.2-1.6L8 1.5z"
+          stroke="currentColor"
+          strokeWidth="1.2"
+          strokeLinejoin="round"
+          fill="none"
+        />
+        <circle cx="12.8" cy="3.2" r="0.9" fill="currentColor" />
       </svg>
     )
   }
@@ -148,6 +166,12 @@ export function SettingsModal({
   const [saveDir, setSaveDir] = useState('')
   const [channel, setChannel] = useState<'stable' | 'beta'>('stable')
   const [appVersion, setAppVersion] = useState('')
+  // 2026-08-11 ZCode: AI provider 设置(provider/key/baseUrl/model)
+  const [aiSettings, setAiSettingsState] = useState<AiSettings>(() => defaultAiSettings())
+  const [aiSaved, setAiSaved] = useState(false)
+  // 2026-08-11 ZCode: 连接测试状态
+  const [aiTesting, setAiTesting] = useState(false)
+  const [aiTestResult, setAiTestResult] = useState<{ ok: boolean; detail: string } | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -162,6 +186,9 @@ export function SettingsModal({
     })
     void window.aiOffice.getAppVersion?.().then((v) => {
       if (alive && v) setAppVersion(v)
+    })
+    void window.aiOffice.getAiSettings?.().then((s) => {
+      if (alive && s) setAiSettingsState(s)
     })
     return () => {
       alive = false
@@ -186,6 +213,38 @@ export function SettingsModal({
   const changeSaveDir = () => {
     void window.aiOffice.pickDefaultSaveDir?.().then((dir) => {
       if (dir) setSaveDir(dir)
+    })
+  }
+
+  // 2026-08-11 ZCode: AI 设置保存(provider/key/baseUrl/model),保存后显示"已保存"提示
+  const saveAi = (next: AiSettings) => {
+    setAiSettingsState(next)
+    void window.aiOffice.setAiSettings(next).then(() => {
+      setAiSaved(true)
+      setTimeout(() => setAiSaved(false), 2000)
+    })
+  }
+  const currentProvider = aiSettings.provider
+  const currentConfig = aiSettings.providers[currentProvider] ?? { apiKey: '', model: '' }
+  const updateProvider = (pid: AiProviderId) => {
+    saveAi({ ...aiSettings, provider: pid })
+  }
+  const updateField = (field: 'apiKey' | 'model' | 'baseUrl', value: string) => {
+    saveAi({
+      ...aiSettings,
+      providers: {
+        ...aiSettings.providers,
+        [currentProvider]: { ...currentConfig, [field]: value },
+      },
+    })
+  }
+  // 2026-08-11 ZCode: 测试当前 provider 连接
+  const testConnection = () => {
+    setAiTesting(true)
+    setAiTestResult(null)
+    void window.aiOffice.testAiConnection(aiSettings).then((r) => {
+      setAiTesting(false)
+      setAiTestResult(r)
     })
   }
 
@@ -329,10 +388,179 @@ export function SettingsModal({
                 />
               </>
             )}
+            {section === 'ai' && (
+              <>
+                <h3 className="set-pane-title">{t('setSecAi')}</h3>
+                <p className="set-pane-help">{t('setAiHelp')}</p>
+                <div className="set-field">
+                  <div className="set-field-text">
+                    <label className="set-field-label" htmlFor="set-ai-provider">
+                      {t('setAiProvider')}
+                    </label>
+                  </div>
+                  <select
+                    id="set-ai-provider"
+                    className="set-select"
+                    value={currentProvider}
+                    onChange={(e) => updateProvider(e.target.value as AiProviderId)}
+                  >
+                    {AI_PROVIDERS.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {/* API Key 输入 */}
+                <div className="set-field">
+                  <div className="set-field-text">
+                    <label className="set-field-label" htmlFor="set-ai-key">
+                      {t('setAiApiKey')}
+                    </label>
+                  </div>
+                  <input
+                    id="set-ai-key"
+                    type="password"
+                    className="set-input"
+                    placeholder={t('setAiKeyHint')}
+                    value={currentConfig.apiKey}
+                    onChange={(e) => updateField('apiKey', e.target.value)}
+                  />
+                </div>
+                {/* Custom provider: 快速预设模板(学 OpenCode 的 provider 目录) */}
+                {currentProvider === 'custom' && (
+                  <div className="set-field">
+                    <div className="set-field-text">
+                      <label className="set-field-label" htmlFor="set-ai-preset">
+                        {t('setAiPreset')}
+                      </label>
+                    </div>
+                    <select
+                      id="set-ai-preset"
+                      className="set-select"
+                      value=""
+                      onChange={(e) => {
+                        const p = CUSTOM_PRESETS.find((x) => x.id === e.target.value)
+                        if (p) {
+                          // 选预设 → 自动填 baseUrl + model,并更新 key 占位提示
+                          saveAi({
+                            ...aiSettings,
+                            providers: {
+                              ...aiSettings.providers,
+                              custom: {
+                                ...currentConfig,
+                                baseUrl: p.baseUrl,
+                                model: p.defaultModel,
+                              },
+                            },
+                          })
+                        }
+                      }}
+                    >
+                      <option value="">{t('setAiPresetChoose')}</option>
+                      {CUSTOM_PRESETS.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {/* Custom provider 需要 Base URL */}
+                {currentProvider === 'custom' && (
+                  <div className="set-field">
+                    <div className="set-field-text">
+                      <label className="set-field-label" htmlFor="set-ai-baseurl">
+                        {t('setAiBaseUrl')}
+                      </label>
+                    </div>
+                    <input
+                      id="set-ai-baseurl"
+                      type="text"
+                      className="set-input"
+                      placeholder={t('setAiCustomHint')}
+                      value={currentConfig.baseUrl ?? ''}
+                      onChange={(e) => updateField('baseUrl', e.target.value)}
+                    />
+                  </div>
+                )}
+                {/* 模型名(自定义输入或预设下拉) */}
+                <div className="set-field">
+                  <div className="set-field-text">
+                    <label className="set-field-label" htmlFor="set-ai-model">
+                      {t('setAiModel')}
+                    </label>
+                  </div>
+                  {(() => {
+                    const meta = AI_PROVIDERS.find((p) => p.id === currentProvider)
+                    if (meta && meta.models.length > 0) {
+                      const isInList = meta.models.includes(currentConfig.model)
+                      return (
+                        <>
+                          <select
+                            id="set-ai-model"
+                            className="set-select"
+                            value={isInList ? currentConfig.model : '__custom'}
+                            onChange={(e) => {
+                              if (e.target.value !== '__custom') updateField('model', e.target.value)
+                            }}
+                          >
+                            {meta.models.map((m) => (
+                              <option key={m} value={m}>
+                                {m}
+                              </option>
+                            ))}
+                            {!isInList && currentConfig.model && (
+                              <option value="__custom">{currentConfig.model}</option>
+                            )}
+                          </select>
+                          {!isInList && (
+                            <input
+                              type="text"
+                              className="set-input set-input-mt"
+                              placeholder={t('setAiModelHint')}
+                              value={currentConfig.model}
+                              onChange={(e) => updateField('model', e.target.value)}
+                            />
+                          )}
+                        </>
+                      )
+                    }
+                    // custom 或无预设模型的 provider:自由输入
+                    return (
+                      <input
+                        id="set-ai-model"
+                        type="text"
+                        className="set-input"
+                        placeholder={t('setAiModelHint')}
+                        value={currentConfig.model}
+                        onChange={(e) => updateField('model', e.target.value)}
+                      />
+                    )
+                  })()}
+                </div>
+                {aiSaved && <div className="set-pane-saved">{t('setAiSaved')}</div>}
+                <div className="set-pane-footer">
+                  <button
+                    className="set-btn primary"
+                    disabled={aiTesting || !currentConfig.apiKey}
+                    onClick={testConnection}
+                  >
+                    {aiTesting ? t('setAiTesting') : t('setAiTestBtn')}
+                  </button>
+                  {aiTestResult && (
+                    <span className={aiTestResult.ok ? 'set-test-ok' : 'set-test-fail'}>
+                      {aiTestResult.ok ? t('setAiTestOk') : t('setAiTestFail')} {aiTestResult.detail}
+                    </span>
+                  )}
+                </div>
+              </>
+            )}
             {section === 'about' && (
               <>
                 <h3 className="set-pane-title">{t('setSecAbout')}</h3>
                 <Field label={t('versionLabel')} value={appVersion || '—'} />
+                <Field label={t('forkBasedOn')} value="GenOffice" />
                 <div className="set-field">
                   <div className="set-field-text">
                     <label className="set-field-label" htmlFor="set-channel">

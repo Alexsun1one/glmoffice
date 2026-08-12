@@ -307,17 +307,68 @@ export async function gskGenerateImage(
   options: GskGenerateImageOptions,
   signal?: AbortSignal,
 ): Promise<GskGeneratedImage> {
-  const args = ['img', options.prompt]
-  if (options.model) args.push('-m', options.model)
-  if (options.referenceImageUrls?.length) args.push('--image_urls', ...options.referenceImageUrls)
-  if (options.aspectRatio) args.push('--aspect_ratio', options.aspectRatio)
-  if (options.imageSize) args.push('--image_size', options.imageSize)
-  const raw = await runGsk(args, GENERATE_TIMEOUT_MS, signal)
-  const result = parseGskGeneratedImage(raw)
-  // Bare genspark file URLs (/api/files/) return 403; swap for a signed direct link with a token
-  // so later plain fetch downloads (e.g. insert_web_image) need no auth
-  result.url = await gskResolveDownloadUrl(result.url)
-  return result
+  // 2026-08-11 ZCode: 按 provider 路由文生图
+  // 智谱→CogView-4、OpenAI→DALL-E 3、Gemini→imagen(均走 /images/generations,格式兼容)
+  // Anthropic/DeepSeek 无文生图 API → 报错
+  const apiKey = process.env.AI_ACTIVE_KEY ?? process.env.ZHIPU_API_KEY
+  if (!apiKey) {
+    throw new Error('No AI provider API key set; configure a provider in AI settings')
+  }
+  const provider = process.env.AI_ACTIVE_PROVIDER ?? 'custom'
+  // 不支持文生图的 provider
+  if (provider === 'anthropic' || provider === 'deepseek') {
+    throw new Error(`${provider} does not provide an image generation API. Use Zhipu (Custom), OpenAI, or Gemini.`)
+  }
+  // aspectRatio → size 映射(各家用不同的尺寸表示,统一成 1024 基准)
+  const SIZE_MAP: Record<string, string> = {
+    '1:1': '1024x1024',
+    auto: '1024x1024',
+    '4:3': '1344x768',
+    '3:2': '1344x768',
+    '16:9': '1080x720',
+    '3:4': '768x1344',
+    '2:3': '768x1344',
+    '9:16': '720x1080',
+  }
+  const ratio = options.aspectRatio ?? '1:1'
+  const size = SIZE_MAP[ratio] ?? '1024x1024'
+  // 按 provider 选 baseUrl + model
+  let baseUrl: string
+  let model: string
+  if (provider === 'openai') {
+    baseUrl = 'https://api.openai.com/v1'
+    model = 'dall-e-3'
+  } else if (provider === 'gemini') {
+    // Gemini 的 OpenAI 兼容端点也支持 /images/generations
+    baseUrl = 'https://generativelanguage.googleapis.com/v1beta/openai'
+    model = 'imagen-3.0-generate-002'
+  } else {
+    // custom(智谱等)或未指定 → 用 AI_ACTIVE_BASE_URL(注入的 baseUrl)
+    baseUrl = (process.env.AI_ACTIVE_BASE_URL ?? process.env.ZHIPU_BASE_URL ?? 'https://open.bigmodel.cn/api/coding/paas/v4').replace(/\/$/, '')
+    model = 'cogview-4'
+  }
+  const resp = await fetch(`${baseUrl}/images/generations`, {
+    method: 'POST',
+    signal,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      prompt: options.prompt,
+      size,
+    }),
+  })
+  if (!resp.ok) {
+    const detail = await resp.text().catch(() => '')
+    throw new Error(`${model} HTTP ${resp.status}: ${detail.slice(0, 200)}`)
+  }
+  const data = asRecord(await resp.json())
+  const img = asRecord(firstItem(data.data ?? []))
+  const url = String(img.url ?? '')
+  if (!url) throw new Error(`${model} returned no image: ${JSON.stringify(data).slice(0, 200)}`)
+  return { url, taskId: String(data.id ?? '') }
 }
 
 /**
@@ -513,15 +564,108 @@ export async function gskAnalyzeMedia(
   options: GskAnalyzeMediaOptions,
   signal?: AbortSignal,
 ): Promise<string> {
-  const args = [
-    'media-analyze',
-    '--media_urls',
-    ...options.mediaUrls,
-    '--requirements',
-    options.requirements,
-  ]
-  const raw = await runGsk(args, GENERATE_TIMEOUT_MS, signal)
-  return extractGskText(raw)
+  // 2026-08-11 ZCode: 按 provider 路由图片分析
+  // 智谱→GLM-4V、OpenAI→GPT-4o(均 OpenAI 兼容 image_url 格式)
+  // Anthropic→Claude(原生 image source 格式)、Gemini→Gemini(原生 inlineData 格式)
+  // DeepSeek 无视觉能力 → 报错
+  const apiKey = process.env.AI_ACTIVE_KEY ?? process.env.ZHIPU_API_KEY
+  if (!apiKey) {
+    throw new Error('No AI provider API key set; configure a provider in AI settings')
+  }
+  const provider = process.env.AI_ACTIVE_PROVIDER ?? 'custom'
+  if (provider === 'deepseek') {
+    throw new Error('DeepSeek does not provide a vision API. Use Zhipu (Custom), OpenAI, Anthropic, or Gemini.')
+  }
+  // 判断是否图片 URL(简单启发式:扩展名或 data:image)
+  const isImage = (u: string) =>
+    /\.(png|jpe?g|webp|gif|bmp|svg)(\?|$)/i.test(u) || u.startsWith('data:image/')
+  const nonImage = options.mediaUrls.filter((u) => !isImage(u))
+  if (nonImage.length > 0) {
+    return `Only image URLs are supported for analysis; skipped non-image URLs: ${nonImage.join(', ')}.` +
+      (options.mediaUrls.length > nonImage.length ? ' Other images analyzed below.' : ' No analyzable images.')
+  }
+  const reqText = options.requirements || 'Analyze this image.'
+  // ── OpenAI 兼容格式(智谱 GLM-4V / OpenAI GPT-4o)──
+  if (provider === 'custom' || provider === 'openai') {
+    const baseUrl = provider === 'openai'
+      ? 'https://api.openai.com/v1'
+      : (process.env.AI_ACTIVE_BASE_URL ?? process.env.ZHIPU_BASE_URL ?? 'https://open.bigmodel.cn/api/coding/paas/v4').replace(/\/$/, '')
+    const model = provider === 'openai' ? 'gpt-4o' : 'glm-4v-plus'
+    const content: Array<{ type: string; text?: string; image_url?: { url: string } }> = [
+      { type: 'text', text: reqText },
+    ]
+    for (const u of options.mediaUrls) {
+      content.push({ type: 'image_url', image_url: { url: u } })
+    }
+    const resp = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      signal,
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model, max_tokens: 2000, messages: [{ role: 'user', content }], temperature: 0.3 }),
+    })
+    if (!resp.ok) {
+      const detail = await resp.text().catch(() => '')
+      throw new Error(`${model} HTTP ${resp.status}: ${detail.slice(0, 200)}`)
+    }
+    const data = asRecord(await resp.json())
+    const message = asRecord(asRecord(firstItem(data.choices ?? [])).message ?? {})
+    return String(message.content ?? '')
+  }
+  // ── Anthropic Claude(原生 messages 格式)──
+  if (provider === 'anthropic') {
+    const content: Array<Record<string, unknown>> = [{ type: 'text', text: reqText }]
+    for (const u of options.mediaUrls) {
+      content.push({
+        type: 'image',
+        source: u.startsWith('data:')
+          ? { type: 'base64', media_type: u.slice(5, u.indexOf(';')), data: u.slice(u.indexOf(',') + 1) }
+          : { type: 'url', url: u },
+      })
+    }
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({ model: 'claude-sonnet-4-5-20250929', max_tokens: 2000, messages: [{ role: 'user', content }] }),
+    })
+    if (!resp.ok) {
+      const detail = await resp.text().catch(() => '')
+      throw new Error(`Claude HTTP ${resp.status}: ${detail.slice(0, 200)}`)
+    }
+    const data = asRecord(await resp.json())
+    const block = asRecord(firstItem(data.content ?? []))
+    return String(block.text ?? '')
+  }
+  // ── Gemini(原生 generateContent 格式)──
+  if (provider === 'gemini') {
+    const parts: Array<Record<string, unknown>> = [{ text: reqText }]
+    for (const u of options.mediaUrls) {
+      if (u.startsWith('data:')) {
+        const m = u.match(/^data:([^;]+);base64,(.*)$/)
+        if (m) parts.push({ inlineData: { mimeType: m[1], data: m[2] } })
+      } else {
+        parts.push({ fileData: { fileUri: u, mimeType: 'image/png' } })
+      }
+    }
+    const resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      { method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts }] }) },
+    )
+    if (!resp.ok) {
+      const detail = await resp.text().catch(() => '')
+      throw new Error(`Gemini HTTP ${resp.status}: ${detail.slice(0, 200)}`)
+    }
+    const data = asRecord(await resp.json())
+    const candidate = asRecord(firstItem(data.candidates ?? []))
+    const part = asRecord(firstItem(asRecord(candidate.content ?? {}).parts ?? []))
+    return String(part.text ?? '')
+  }
+  throw new Error(`Media analysis not implemented for provider: ${provider}`)
 }
 
 export interface GskTranscribeOptions {

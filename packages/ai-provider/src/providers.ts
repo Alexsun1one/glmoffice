@@ -88,6 +88,96 @@ export const AI_PROVIDERS: AiProviderMeta[] = [
 ]
 
 /**
+ * 2026-08-11 ZCode: Custom provider 快速模板——选一下自动填好 baseUrl + 推荐模型。
+ * 学 OpenCode 的 provider 目录思路:国内常用 OpenAI 兼容服务预置好,用户只填 key。
+ * 所有都是 OpenAI 兼容协议(/v1/chat/completions),走 custom provider 通路。
+ */
+export interface CustomPreset {
+  id: string
+  label: string
+  baseUrl: string
+  models: string[]
+  defaultModel: string
+  keyPlaceholder: string
+  keyHint?: string
+}
+
+export const CUSTOM_PRESETS: readonly CustomPreset[] = [
+  {
+    id: 'zhipu',
+    label: '智谱 GLM (Zhipu)',
+    baseUrl: 'https://open.bigmodel.cn/api/coding/paas/v4',
+    models: ['glm-5.2', 'glm-4.6', 'glm-4-plus', 'glm-4-air', 'glm-4v-plus'],
+    defaultModel: 'glm-5.2',
+    keyPlaceholder: 'xxxxxxxx.xxxxxxxx',
+    keyHint: 'open.bigmodel.cn 控制台获取(Coding Plan 或标准 API)',
+  },
+  {
+    id: 'deepseek',
+    label: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com/v1',
+    models: ['deepseek-chat', 'deepseek-reasoner'],
+    defaultModel: 'deepseek-chat',
+    keyPlaceholder: 'sk-...',
+    keyHint: 'platform.deepseek.com 控制台获取',
+  },
+  {
+    id: 'kimi',
+    label: 'Kimi (月之暗面)',
+    baseUrl: 'https://api.moonshot.cn/v1',
+    models: ['moonshot-v1-128k', 'moonshot-v1-32k', 'moonshot-v1-8k'],
+    defaultModel: 'moonshot-v1-128k',
+    keyPlaceholder: 'sk-...',
+    keyHint: 'platform.moonshot.cn 控制台获取',
+  },
+  {
+    id: 'qwen',
+    label: '通义千问 (Qwen)',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    models: ['qwen-max', 'qwen-plus', 'qwen-turbo', 'qwen-long'],
+    defaultModel: 'qwen-max',
+    keyPlaceholder: 'sk-...',
+    keyHint: 'dashscope.aliyun.com 控制台获取',
+  },
+  {
+    id: 'siliconflow',
+    label: '硅基流动 (SiliconFlow)',
+    baseUrl: 'https://api.siliconflow.cn/v1',
+    models: ['Qwen/Qwen2.5-72B-Instruct', 'deepseek-ai/DeepSeek-V3', 'Pro/Qwen/Qwen2.5-Coder-32B-Instruct'],
+    defaultModel: 'Qwen/Qwen2.5-72B-Instruct',
+    keyPlaceholder: 'sk-...',
+    keyHint: 'siliconflow.cn 控制台获取(聚合多家模型,有免费额度)',
+  },
+  {
+    id: 'baichuan',
+    label: '百川 (Baichuan)',
+    baseUrl: 'https://api.baichuan-ai.com/v1',
+    models: ['Baichuan4-Turbo', 'Baichuan3-Turbo'],
+    defaultModel: 'Baichuan4-Turbo',
+    keyPlaceholder: 'sk-...',
+    keyHint: 'platform.baichuan-ai.com 控制台获取',
+  },
+  {
+    id: 'minimax',
+    label: 'MiniMax',
+    baseUrl: 'https://api.minimax.chat/v1',
+    models: ['abab6.5s-chat', 'abab6.5-chat'],
+    defaultModel: 'abab6.5s-chat',
+    keyPlaceholder: '...',
+    keyHint: 'platform.minimaxi.com 控制台获取',
+  },
+  {
+    id: 'ollama',
+    label: 'Ollama (本地)',
+    baseUrl: 'http://localhost:11434/v1',
+    models: ['llama3.1', 'qwen2.5', 'deepseek-r1'],
+    defaultModel: 'llama3.1',
+    keyPlaceholder: 'ollama(无需 key)',
+    keyHint: '本地 Ollama 服务,无需 API key(填任意字符即可)',
+  },
+]
+
+/**
  * Fresh settings with every provider's default model and an empty key,
  * except providers listed in `defaultApiKeys` (e.g. an app-specific
  * preconfigured Anthropic key). Callers own that policy; this package

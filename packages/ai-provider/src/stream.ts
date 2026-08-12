@@ -738,8 +738,14 @@ async function openAiCompatibleTurn(
               function: { name: t.name, description: t.description, parameters: t.inputSchema },
             })),
           }
-        : {}),
+        : baseUrl.includes('bigmodel')
+          ? // 2026-08-11 ZCode: 智谱 GLM 自带 web_search(服务端联网)。仅在无 function tools 时注入,
+            // 避免与 function tools 混用冲突。让纯对话也能联网查最新信息。
+            { tools: [{ type: 'web_search', web_search: { enable: true, search_result: true } }] }
+          : {}),
       temperature: 0.3,
+      // 2026-08-11 ZCode: GLM-5.2/4.6 是推理模型,不关 thinking 会吃光 max_tokens 导致 content 空
+      ...(config.model.toLowerCase().includes('glm') ? { thinking: { type: 'disabled' as const } } : {}),
       stream: true,
     }),
   })

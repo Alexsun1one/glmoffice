@@ -38,10 +38,8 @@ const includeMacX64 = process.env.GENOFFICE_MAC_X64 === '1'
 // script was replaced by the lazy `install-electron` bin), and electron-builder
 // exits 0 on a missing extraResources source, so without this check the
 // installer would silently ship without the Chromium license.
+// 2026-08-11 ZCode: 已去掉 @genspark/cli 和 ws(gsk 依赖),改用智谱 GLM/CogView/GLM-4V
 for (const rel of [
-  '../../node_modules/@genspark/cli',
-  '../../node_modules/@genspark/cli/node_modules/commander',
-  '../../node_modules/ws',
   '../../node_modules/electron/dist/LICENSES.chromium.html',
   '../../node_modules/@embedpdf/pdfium/dist/pdfium.wasm',
   '../pdf/node_modules/harfbuzzjs/hb-subset.wasm',
@@ -153,18 +151,7 @@ const config = {
       from: '../pdf/node_modules/harfbuzzjs/hb-subset.wasm',
       to: 'wasm/hb-subset.wasm',
     },
-    {
-      from: '../../node_modules/@genspark/cli',
-      to: 'gsk/node_modules/@genspark/cli',
-    },
-    {
-      from: '../../node_modules/@genspark/cli/node_modules/commander',
-      to: 'gsk/node_modules/commander',
-    },
-    {
-      from: '../../node_modules/ws',
-      to: 'gsk/node_modules/ws',
-    },
+    // 2026-08-11 ZCode: 去掉 @genspark/cli 和 ws 的 extraResources(改用智谱,不再需要 gsk CLI)
   ],
   // `mimeType` is read only by the Linux target, where it becomes the
   // desktop entry's MimeType= list; associations without it are dropped

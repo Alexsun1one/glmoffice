@@ -167,6 +167,16 @@ const homeApi: HomeApi = {
       throw new Error('Invalid theme.')
     await ipcRenderer.invoke(HOME_CHANNELS.setTheme, theme)
   },
+  // 2026-08-11 ZCode: AI 设置桥接(Settings → docs-main.registerAiIpc)
+  async getAiSettings() {
+    return await ipcRenderer.invoke(HOME_CHANNELS.getAiSettings)
+  },
+  async setAiSettings(settings) {
+    await ipcRenderer.invoke(HOME_CHANNELS.setAiSettings, settings)
+  },
+  async testAiConnection(settings) {
+    return await ipcRenderer.invoke(HOME_CHANNELS.testAiConnection, settings)
+  },
   async getDefaultSaveDir() {
     const result: unknown = await ipcRenderer.invoke(HOME_CHANNELS.getDefaultSaveDir)
     return typeof result === 'string' ? result : ''
